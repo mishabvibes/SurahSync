@@ -6,7 +6,7 @@ import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Play, Pause, Download, Plus, Trash2, SkipBack, SkipForward, FileAudio, Save, Wand2, RefreshCw, GripVertical, Activity, Layers, Music, Settings2 } from 'lucide-react'
+import { Play, Pause, Download, Plus, Trash2, SkipBack, SkipForward, FileAudio, Save, Wand2, RefreshCw, GripVertical, Activity, Layers, Music, Settings2, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { detectSilentRegions } from '@/lib/audio-utils'
 import {
@@ -61,31 +61,34 @@ function SortableAyahItem(props: {
         transition,
         zIndex: isDragging ? 50 : 'auto',
         position: isDragging ? 'relative' as const : 'static' as const,
+        touchAction: 'none' // Critical for mobile dragging
     };
 
     const { ayah, onRemove, onCapture, onUpdate, onInsertAfter, onPlay, index } = props;
 
     // Helper for timer input aesthetic
     const TimeInput = ({ value, type }: { value: number | null, type: 'start' | 'end' }) => (
-        <div className="relative group/input">
-            <div className="flex items-center bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all overflow-hidden">
+        <div className="relative group/input flex-1 min-w-[80px]">
+            <div className="flex items-center bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all overflow-hidden h-9">
                 <Input
-                    className="h-8 w-20 font-mono text-xs font-medium border-none bg-transparent focus-visible:ring-0 px-0 text-center text-slate-700"
+                    className="h-full flex-grow font-mono text-xs font-medium border-none bg-transparent focus-visible:ring-0 px-0 text-center text-slate-700 min-w-0"
                     value={value?.toFixed(2) || ''}
                     onChange={(e) => {
                         const val = parseFloat(e.target.value)
                         if (!isNaN(val)) onUpdate(ayah.id, type, val)
                     }}
+                    type="number"
+                    step="0.01"
                 />
                 <div className="w-[1px] h-4 bg-slate-200"></div>
                 <Button
                     size="icon"
                     variant="ghost"
-                    className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-transparent"
+                    className="h-9 w-9 text-slate-400 hover:text-indigo-600 hover:bg-transparent flex-shrink-0"
                     onClick={() => onCapture(ayah.id, type)}
                     title={`Capture ${type} time`}
                 >
-                    <RefreshCw className="w-3 h-3" />
+                    <RefreshCw className="w-3.5 h-3.5" />
                 </Button>
             </div>
             <label className="absolute -top-1.5 left-2 bg-white px-1 text-[8px] font-bold text-slate-400 uppercase tracking-wider">{type}</label>
@@ -93,39 +96,61 @@ function SortableAyahItem(props: {
     )
 
     return (
-        <div ref={setNodeRef} style={style} className={cn("relative mb-3 transition-all outline-none", isDragging && "z-50 scale-[1.02]")}>
+        <div ref={setNodeRef} style={style} className={cn("relative mb-3 transition-all outline-none touch-none", isDragging && "z-50 scale-[1.02]")}>
             <div className={cn(
-                "flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 bg-white group hover:shadow-md",
+                "flex flex-col sm:flex-row items-center gap-3 p-3 rounded-xl border transition-all duration-200 bg-white group hover:shadow-md",
                 isDragging ? "shadow-xl border-indigo-500/50 ring-4 ring-indigo-50/50" : "shadow-sm border-slate-200/60",
                 ayah.type === 'aameen' && "bg-purple-50/30 border-purple-200/60"
             )}>
-                {/* Drag Handle */}
-                <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 p-1.5 hover:bg-slate-50 rounded-md transition-colors">
-                    <GripVertical className="w-4 h-4" />
-                </div>
+                {/* Top Row on Mobile: Drag + Number + Actions */}
+                <div className="flex items-center justify-between w-full sm:w-auto sm:justify-start gap-3">
+                    <div className="flex items-center gap-3">
+                        {/* Drag Handle */}
+                        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 p-1.5 hover:bg-slate-50 rounded-md transition-colors">
+                            <GripVertical className="w-5 h-5" />
+                        </div>
 
-                {/* Number Badge */}
-                <div className={cn(
-                    "flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl font-bold text-base shadow-sm border",
-                    ayah.type === 'aameen'
-                        ? "bg-purple-100/50 text-purple-700 border-purple-200"
-                        : "bg-indigo-50 text-indigo-700 border-indigo-100"
-                )}>
-                    {ayah.type === 'aameen' ? 'AM' : ayah.number}
-                </div>
+                        {/* Number Badge */}
+                        <div className={cn(
+                            "flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl font-bold text-base shadow-sm border",
+                            ayah.type === 'aameen'
+                                ? "bg-purple-100/50 text-purple-700 border-purple-200"
+                                : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                        )}>
+                            {ayah.type === 'aameen' ? 'AM' : ayah.number}
+                        </div>
+                    </div>
 
-                {/* Content Area */}
-                <div className="flex-grow flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6">
-                    {/* Time Inputs */}
-                    <div className="flex items-center gap-2">
-                        <TimeInput value={ayah.start} type="start" />
-                        <span className="text-slate-300">➜</span>
-                        <TimeInput value={ayah.end} type="end" />
+                    {/* Mobile Only Actions */}
+                    <div className="flex items-center gap-1 sm:hidden">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-slate-400 hover:text-indigo-600 rounded-lg"
+                            onClick={() => onPlay(ayah.id)}
+                        >
+                            <Play className="w-5 h-5 fill-current" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-slate-400 hover:text-red-500 rounded-lg"
+                            onClick={() => onRemove(ayah.id)}
+                        >
+                            <Trash2 className="w-5 h-5" />
+                        </Button>
                     </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 pl-2 border-l border-slate-100">
+                {/* Content Area - Times */}
+                <div className="flex-grow flex items-center gap-2 w-full sm:w-auto">
+                    <TimeInput value={ayah.start} type="start" />
+                    <span className="text-slate-300">➜</span>
+                    <TimeInput value={ayah.end} type="end" />
+                </div>
+
+                {/* Desktop Actions */}
+                <div className="hidden sm:flex items-center gap-1 pl-2 border-l border-slate-100">
                     <Button
                         variant="ghost"
                         size="icon"
@@ -172,6 +197,7 @@ export default function AudioAnnotationApp() {
     const [currentTime, setCurrentTime] = useState(0)
     const [duration, setDuration] = useState(0)
     const [isProcessing, setIsProcessing] = useState(false)
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Mobile sidebar state
 
     // Auto-segmentation settings
     const [silenceThreshold, setSilenceThreshold] = useState(0.02)
@@ -449,19 +475,22 @@ export default function AudioAnnotationApp() {
         <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
 
             {/* 1. Header & Toolbar */}
-            <header className="flex-shrink-0 bg-white border-b border-slate-200 z-30 px-6 py-4 flex items-center justify-between shadow-sm">
+            <header className="flex-shrink-0 bg-white border-b border-slate-200 z-30 px-4 md:px-6 py-4 flex items-center justify-between shadow-sm relative">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-lg">
-                        <Activity className="w-6 h-6" />
+                    <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                        <Menu className="w-5 h-5 text-slate-600" />
+                    </Button>
+                    <div className="w-8 h-8 md:w-10 md:h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-lg">
+                        <Activity className="w-5 h-5 md:w-6 md:h-6" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600">SurahSync</h1>
-                        <p className="text-xs text-slate-400 font-medium tracking-wide">AUDIO ANNOTATION SUITE</p>
+                        <h1 className="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600 leading-tight">SurahSync</h1>
+                        <p className="text-[10px] md:text-xs text-slate-400 font-medium tracking-wide hidden sm:block">AUDIO ANNOTATION SUITE</p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 md:gap-3">
+                    <div className="hidden lg:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
                         <Input
                             className="w-20 h-8 text-sm focus-visible:ring-0 border-none bg-transparent"
                             placeholder="ID"
@@ -469,7 +498,7 @@ export default function AudioAnnotationApp() {
                             value={surahId}
                             onChange={(e) => setSurahId(e.target.value)}
                         />
-                        <div className="w-[1px] bg-slate-300 my-1"></div>
+                        <div className="w-px bg-slate-300 my-1"></div>
                         <Input
                             className="w-32 h-8 text-sm focus-visible:ring-0 border-none bg-transparent"
                             placeholder="Surah Name"
@@ -478,26 +507,59 @@ export default function AudioAnnotationApp() {
                         />
                     </div>
 
-                    <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden md:block"></div>
+                    <div className="h-8 w-px bg-slate-200 mx-2 hidden lg:block"></div>
 
-                    <Button variant="outline" size="sm" onClick={() => document.getElementById('file-upload')?.click()} className="text-slate-600 hover:text-indigo-600 hover:border-indigo-200">
+                    <Button variant="outline" size="sm" onClick={() => document.getElementById('file-upload')?.click()} className="text-slate-600 hover:text-indigo-600 hover:border-indigo-200 h-9 md:h-10 text-xs md:text-sm px-3">
                         <FileAudio className="w-4 h-4 mr-2" />
-                        {file ? 'Change Audio' : 'Upload'}
+                        <span className="hidden sm:inline">{file ? 'Change Audio' : 'Upload'}</span>
+                        <span className="sm:hidden">{file ? 'Change' : 'Upload'}</span>
                     </Button>
                     <input id="file-upload" type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
 
-                    <Button onClick={exportData} disabled={!file || ayahs.length === 0} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100">
-                        <Download className="w-4 h-4 mr-2" /> Export JSON
+                    <Button onClick={exportData} disabled={!file || ayahs.length === 0} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 h-9 md:h-10 px-3">
+                        <Download className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Export JSON</span>
                     </Button>
                 </div>
             </header>
 
             {/* 2. Main Content Area */}
-            <main className="flex-grow flex overflow-hidden">
+            <main className="flex-grow flex overflow-hidden relative">
 
-                {/* Left Sidebar: Settings */}
-                <aside className="w-80 flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto hidden md:flex flex-col">
-                    <div className="p-6 space-y-8">
+                {/* Mobile Drawer Backdrop */}
+                {isSidebarOpen && (
+                    <div className="absolute inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)}></div>
+                )}
+
+                {/* Left Sidebar: Settings - Responsive */}
+                <aside className={cn(
+                    "absolute md:relative z-50 md:z-auto h-full w-[85%] md:w-80 flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto transition-transform duration-300 shadow-2xl md:shadow-none",
+                    isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+                )}>
+                    <div className="p-4 md:p-6 space-y-6 md:space-y-8">
+
+                        <div className="flex justify-between items-center md:hidden pb-4 border-b border-slate-100">
+                            <span className="font-bold text-slate-700">Settings</span>
+                            <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)}>
+                                <X className="w-5 h-5 text-slate-400" />
+                            </Button>
+                        </div>
+
+                        {/* Mobile Metadata Inputs */}
+                        <div className="space-y-4 lg:hidden">
+                            <div className="flex items-center gap-2 text-indigo-900 font-semibold text-sm uppercase tracking-wider pb-2 border-b border-indigo-50">
+                                <Activity className="w-4 h-4 text-indigo-500" /> Metadata
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] uppercase font-bold text-slate-400">Surah ID</label>
+                                    <Input placeholder="1" value={surahId} onChange={(e) => setSurahId(e.target.value)} className="h-9" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] uppercase font-bold text-slate-400">Name</label>
+                                    <Input placeholder="Al-Fatiha" value={surahName} onChange={(e) => setSurahName(e.target.value)} className="h-9" />
+                                </div>
+                            </div>
+                        </div>
 
                         {/* Auto-Segment */}
                         <div className="space-y-4">
@@ -532,8 +594,11 @@ export default function AudioAnnotationApp() {
                                 </div>
 
                                 <Button
-                                    className="w-full bg-slate-900 text-white hover:bg-indigo-900 transition-all font-medium"
-                                    onClick={runAutoSegment}
+                                    className="w-full bg-slate-900 text-white hover:bg-indigo-900 transition-all font-medium py-6"
+                                    onClick={() => {
+                                        runAutoSegment()
+                                        setIsSidebarOpen(false)
+                                    }}
                                     disabled={!file || isProcessing}
                                 >
                                     {isProcessing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Layers className="w-4 h-4 mr-2" />}
@@ -567,39 +632,39 @@ export default function AudioAnnotationApp() {
 
                     {/* Sticky Waveform Player */}
                     <div className="flex-shrink-0 bg-white border-b border-indigo-100 shadow-sm z-20 sticky top-0">
-                        <div className="relative group h-32 bg-slate-900">
+                        <div className="relative group h-24 md:h-32 bg-slate-900">
                             <div id="waveform" ref={waveformRef} className="w-full h-full opacity-90" />
 
                             {/* Controls Overlay */}
-                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/80 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 shadow-2xl transition-all opacity-0 group-hover:opacity-100">
-                                <button onClick={() => wavesurferRef.current?.skip(-5)} className="text-slate-400 hover:text-white transition-colors"><SkipBack className="w-5 h-5" /></button>
-                                <button onClick={togglePlayPause} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition-transform">
-                                    {isPlaying ? <Pause className="w-4 h-4 fill-black" /> : <Play className="w-4 h-4 translate-x-0.5 fill-black" />}
+                            <div className="absolute bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 md:gap-4 bg-slate-900/80 backdrop-blur-md px-4 md:px-6 py-1.5 md:py-2 rounded-full border border-white/10 shadow-2xl transition-all">
+                                <button onClick={() => wavesurferRef.current?.skip(-5)} className="text-slate-400 hover:text-white transition-colors p-2"><SkipBack className="w-4 h-4 md:w-5 md:h-5" /></button>
+                                <button onClick={togglePlayPause} className="w-8 h-8 md:w-10 md:h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition-transform">
+                                    {isPlaying ? <Pause className="w-3.5 h-3.5 md:w-4 md:h-4 fill-black" /> : <Play className="w-3.5 h-3.5 md:w-4 md:h-4 translate-x-0.5 fill-black" />}
                                 </button>
-                                <button onClick={() => wavesurferRef.current?.skip(5)} className="text-slate-400 hover:text-white transition-colors"><SkipForward className="w-5 h-5" /></button>
+                                <button onClick={() => wavesurferRef.current?.skip(5)} className="text-slate-400 hover:text-white transition-colors p-2"><SkipForward className="w-4 h-4 md:w-5 md:h-5" /></button>
                             </div>
 
                             {/* Time Display Overlay */}
-                            <div className="absolute top-4 right-6 font-mono text-xs text-white/70 bg-black/20 px-2 py-1 rounded">
+                            <div className="absolute top-2 right-2 md:top-4 md:right-6 font-mono text-[10px] md:text-xs text-white/70 bg-black/20 px-2 py-1 rounded">
                                 {formatTime(currentTime)} / {formatTime(duration)}
                             </div>
 
-                            {!file && <div className="absolute inset-0 flex items-center justify-center text-slate-500 bg-slate-900">Upload audio to visualize</div>}
+                            {!file && <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-slate-900">Upload audio to visualize</div>}
                         </div>
                     </div>
 
                     {/* Scrollable Ayah List */}
-                    <div className="flex-grow overflow-y-auto p-4 md:p-8 relative">
-                        <div className="max-w-3xl mx-auto pb-20">
+                    <div className="flex-grow overflow-y-auto p-2 md:p-4 lg:p-8 relative">
+                        <div className="max-w-3xl mx-auto pb-24 md:pb-20">
 
                             {/* Empty State */}
                             {ayahs.length === 0 && (
-                                <div className="text-center mt-20 p-10 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
-                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-                                        <Music className="w-8 h-8 text-indigo-300" />
+                                <div className="text-center mt-10 md:mt-20 p-6 md:p-10 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50 mx-4">
+                                    <div className="w-12 h-12 md:w-16 md:h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                        <Music className="w-6 h-6 md:w-8 md:h-8 text-indigo-300" />
                                     </div>
-                                    <h3 className="text-lg font-semibold text-slate-700">No Segments Yet</h3>
-                                    <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto">Upload an audio file and run auto-detection, or add segments manually.</p>
+                                    <h3 className="text-base md:text-lg font-semibold text-slate-700">No Segments Yet</h3>
+                                    <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-xs mx-auto">Upload an audio file and run auto-detection settings via the menu.</p>
                                     <div className="flex justify-center gap-3 mt-6">
                                         <Button variant="outline" onClick={addAyah}>
                                             <Plus className="w-4 h-4 mr-2" /> Add Manual
@@ -610,14 +675,11 @@ export default function AudioAnnotationApp() {
 
                             {/* List Header */}
                             {ayahs.length > 0 && (
-                                <div className="flex items-center justify-between mb-6 px-2">
-                                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Timeline</h2>
+                                <div className="flex items-center justify-between mb-4 md:mb-6 px-2 sticky top-0 z-10 bg-slate-50/50 backdrop-blur-sm py-2">
+                                    <h2 className="text-xs md:text-sm font-bold text-slate-400 uppercase tracking-widest">Timeline</h2>
                                     <div className="flex gap-2">
-                                        <Button size="sm" onClick={addAyah} variant="ghost" className="text-indigo-600 hover:bg-indigo-50">
-                                            <Plus className="w-4 h-4 mr-1" /> Add Segment
-                                        </Button>
-                                        <Button size="sm" onClick={addAameen} variant="ghost" className="text-purple-600 hover:bg-purple-50" disabled={ayahs.some(a => a.type === 'aameen')}>
-                                            <Plus className="w-4 h-4 mr-1" /> Add Aameen
+                                        <Button size="sm" onClick={addAyah} variant="ghost" className="text-indigo-600 hover:bg-indigo-50 h-8 text-xs px-2">
+                                            <Plus className="w-3.5 h-3.5 mr-1" /> Add Segment
                                         </Button>
                                     </div>
                                 </div>
@@ -646,6 +708,19 @@ export default function AudioAnnotationApp() {
                                     ))}
                                 </SortableContext>
                             </DndContext>
+
+                            {/* Floating Action Button for Mobile */}
+                            {ayahs.length > 0 && (
+                                <div className="fixed bottom-6 right-6 md:hidden z-30 flex flex-col gap-3">
+                                    <Button
+                                        size="icon"
+                                        className="rounded-full h-12 w-12 shadow-lg bg-indigo-600 text-white"
+                                        onClick={addAyah}
+                                    >
+                                        <Plus className="w-6 h-6" />
+                                    </Button>
+                                </div>
+                            )}
 
                             {/* Bottom Safe Space */}
                             <div className="h-20"></div>

@@ -1,12 +1,12 @@
 "use client"
 
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import Wavesurfer from 'wavesurfer.js'
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Play, Pause, Download, Plus, Trash2, SkipBack, SkipForward, FileAudio, Save, Wand2, RefreshCw, GripVertical } from 'lucide-react'
+import { Play, Pause, Download, Plus, Trash2, SkipBack, SkipForward, FileAudio, Save, Wand2, RefreshCw, GripVertical, Activity, Layers, Music, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { detectSilentRegions } from '@/lib/audio-utils'
 import {
@@ -37,7 +37,7 @@ interface AyahItem {
     end: number | null
 }
 
-// Sortable Item Component
+// Rewritten SortableAyahItem with Modern Design
 function SortableAyahItem(props: {
     ayah: AyahItem,
     index: number,
@@ -65,107 +65,101 @@ function SortableAyahItem(props: {
 
     const { ayah, onRemove, onCapture, onUpdate, onInsertAfter, onPlay, index } = props;
 
+    // Helper for timer input aesthetic
+    const TimeInput = ({ value, type }: { value: number | null, type: 'start' | 'end' }) => (
+        <div className="relative group/input">
+            <div className="flex items-center bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100 transition-all overflow-hidden">
+                <Input
+                    className="h-8 w-20 font-mono text-xs font-medium border-none bg-transparent focus-visible:ring-0 px-0 text-center text-slate-700"
+                    value={value?.toFixed(2) || ''}
+                    onChange={(e) => {
+                        const val = parseFloat(e.target.value)
+                        if (!isNaN(val)) onUpdate(ayah.id, type, val)
+                    }}
+                />
+                <div className="w-[1px] h-4 bg-slate-200"></div>
+                <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-transparent"
+                    onClick={() => onCapture(ayah.id, type)}
+                    title={`Capture ${type} time`}
+                >
+                    <RefreshCw className="w-3 h-3" />
+                </Button>
+            </div>
+            <label className="absolute -top-1.5 left-2 bg-white px-1 text-[8px] font-bold text-slate-400 uppercase tracking-wider">{type}</label>
+        </div>
+    )
+
     return (
-        <div ref={setNodeRef} style={style} className={cn("relative group mb-3", isDragging && "opacity-50")}>
+        <div ref={setNodeRef} style={style} className={cn("relative mb-3 transition-all outline-none", isDragging && "z-50 scale-[1.02]")}>
             <div className={cn(
-                "flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 p-3 rounded-lg border transition-all duration-200 bg-white border-slate-100 hover:border-indigo-200 hover:shadow-sm",
-                ayah.type === 'aameen' && "bg-purple-50 border-purple-100"
+                "flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 bg-white group hover:shadow-md",
+                isDragging ? "shadow-xl border-indigo-500/50 ring-4 ring-indigo-50/50" : "shadow-sm border-slate-200/60",
+                ayah.type === 'aameen' && "bg-purple-50/30 border-purple-200/60"
             )}>
-                <div className="flex justify-between items-center sm:block">
+                {/* Drag Handle */}
+                <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 p-1.5 hover:bg-slate-50 rounded-md transition-colors">
+                    <GripVertical className="w-4 h-4" />
+                </div>
+
+                {/* Number Badge */}
+                <div className={cn(
+                    "flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl font-bold text-base shadow-sm border",
+                    ayah.type === 'aameen'
+                        ? "bg-purple-100/50 text-purple-700 border-purple-200"
+                        : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                )}>
+                    {ayah.type === 'aameen' ? 'AM' : ayah.number}
+                </div>
+
+                {/* Content Area */}
+                <div className="flex-grow flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6">
+                    {/* Time Inputs */}
                     <div className="flex items-center gap-2">
-                        {/* Drag Handle */}
-                        <div {...attributes} {...listeners} className="cursor-grab hover:text-indigo-600 text-slate-400">
-                            <GripVertical className="w-5 h-5" />
-                        </div>
-
+                        <TimeInput value={ayah.start} type="start" />
+                        <span className="text-slate-300">➜</span>
+                        <TimeInput value={ayah.end} type="end" />
                     </div>
+                </div>
 
+                {/* Actions */}
+                <div className="flex items-center gap-1 pl-2 border-l border-slate-100">
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50"
+                        className="h-9 w-9 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
                         onClick={() => onPlay(ayah.id)}
                         title="Play Segment"
                     >
                         <Play className="w-4 h-4 fill-current" />
                     </Button>
-
-                    <div className={cn(
-                        "flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm border",
-                        ayah.type === 'aameen' ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-slate-100 text-slate-600 border-slate-200"
-                    )}>
-                        {ayah.type === 'aameen' ? 'AM' : ayah.number}
-                    </div>
-                </div>
-
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 sm:hidden" onClick={() => onRemove(ayah.id)}>
-                    <Trash2 className="w-4 h-4" />
-                </Button>
-            </div>
-
-            <div className="flex-grow grid grid-cols-2 gap-3">
-                <div className="relative">
-                    <label className="text-[10px] font-semibold text-slate-400 uppercase absolute -top-1.5 left-2 bg-white px-1 z-10">Start</label>
-                    <div className="flex items-center">
-                        <Input
-                            className="h-9 font-mono text-xs text-center pr-8"
-                            value={ayah.start?.toFixed(2) || ''}
-                            onChange={(e) => {
-                                const val = parseFloat(e.target.value)
-                                if (!isNaN(val)) onUpdate(ayah.id, 'start', val)
-                            }}
-                        />
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            className="absolute right-0.5 h-8 w-8 text-slate-400 hover:text-indigo-600"
-                            onClick={() => onCapture(ayah.id, 'start')}
-                            title="Capture current time"
-                        >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                        </Button>
-                    </div>
-                </div>
-                <div className="relative">
-                    <label className="text-[10px] font-semibold text-slate-400 uppercase absolute -top-1.5 left-2 bg-white px-1 z-10">End</label>
-                    <div className="flex items-center">
-                        <Input
-                            className="h-9 font-mono text-xs text-center pr-8"
-                            value={ayah.end?.toFixed(2) || ''}
-                            onChange={(e) => {
-                                const val = parseFloat(e.target.value)
-                                if (!isNaN(val)) onUpdate(ayah.id, 'end', val)
-                            }}
-                        />
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            className="absolute right-0.5 h-8 w-8 text-slate-400 hover:text-indigo-600"
-                            onClick={() => onCapture(ayah.id, 'end')}
-                            title="Capture current time"
-                        >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                        </Button>
-                    </div>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                        onClick={() => onRemove(ayah.id)}
+                        title="Delete"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </Button>
                 </div>
             </div>
 
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 hidden sm:inline-flex opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => onRemove(ayah.id)}>
-                <Trash2 className="w-4 h-4" />
-            </Button>
-
-            {/* Insert Button Connector */}
-            <div className="absolute -bottom-4 left-0 right-0 h-4 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity z-10">
+            {/* Smart Insert Trigger */}
+            <div className="absolute -bottom-3.5 left-0 right-0 h-4 flex items-center justify-center group/insert z-10 hover:z-20 cursor-pointer">
+                <div className="w-full h-[1px] bg-indigo-500/20 opacity-0 group-hover/insert:opacity-100 transition-opacity absolute top-1/2 left-4 right-4"></div>
                 <Button
                     variant="outline"
                     size="sm"
-                    className="h-5 text-[10px] bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50 shadow-sm"
+                    className="h-5 px-3 rounded-full text-[10px] font-medium bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50 shadow-sm opacity-0 group-hover/insert:opacity-100 transform scale-90 group-hover/insert:scale-100 transition-all"
                     onClick={() => onInsertAfter(index)}
                 >
-                    <Plus className="w-3 h-3 mr-1" /> Insert Here
+                    <Plus className="w-3 h-3 mr-1" /> Insert Segment
                 </Button>
             </div>
-        </div >
+        </div>
     )
 }
 
@@ -186,6 +180,7 @@ export default function AudioAnnotationApp() {
     const waveformRef = useRef<HTMLDivElement>(null)
     const wavesurferRef = useRef<Wavesurfer | null>(null)
     const regionsPluginRef = useRef<RegionsPlugin | null>(null)
+    const containerRef = useRef<HTMLDivElement>(null)
 
     // DnD Sensors
     const sensors = useSensors(
@@ -204,9 +199,10 @@ export default function AudioAnnotationApp() {
                 cursorColor: '#c7d2fe',
                 barWidth: 2,
                 barGap: 3,
-                height: 120,
+                height: 96, // Slightly compact
                 normalize: true,
-                plugins: []
+                plugins: [],
+                minPxPerSec: 50, // Better zoom by default
             })
 
             // Initialize Regions Plugin
@@ -220,7 +216,6 @@ export default function AudioAnnotationApp() {
             wavesurferRef.current.on('timeupdate', (time) => setCurrentTime(time))
             wavesurferRef.current.on('ready', (d) => setDuration(d))
             wavesurferRef.current.on('decode', () => {
-                // clean up old regions on new file load
                 regionsPluginRef.current?.clearRegions()
             })
 
@@ -241,27 +236,13 @@ export default function AudioAnnotationApp() {
             })
         }
 
-        // Cleanup
-        const ws = wavesurferRef.current
         return () => {
-            // ws?.destroy() // React StrictMode can cause double init issues if not careful, better to leave or handle specifically
+            // Optional cleanup
         }
     }, [])
 
-    // Sync State changes (deletion/addition) TO Regions
-    // We need to be careful not to create infinite loops. 
-    // We only want to add regions if they don't exist, or update them if they changed from OUTSIDE (like manual input).
-    // For now, simpler: data -> regions is hard because regions -> data happens constantly during drag.
-    // We'll rely on initial creation and the "Capture" buttons updating state, which should update regions?
-    // Actually, let's just create regions when we add Ayahs, and update them when we manually capture.
-
     useEffect(() => {
         if (!regionsPluginRef.current) return;
-
-        // This sync is tricky. Let's do a "soft" sync.
-        // If an ayah exists but has no region, create it.
-        // If a region exists but no ayah, remove it (handled by removeAyah).
-
         const regions = regionsPluginRef.current.getRegions()
 
         ayahs.forEach(ayah => {
@@ -277,11 +258,9 @@ export default function AudioAnnotationApp() {
                         resize: true,
                     })
                 } else {
-                    // Update position if state changed markedly (to avoid feedback loop from small drags)
                     if (Math.abs(existingRegion.start - ayah.start) > 0.1 || Math.abs(existingRegion.end - ayah.end) > 0.1) {
                         existingRegion.setOptions({ start: ayah.start, end: ayah.end })
                     }
-                    // Update color if type changed
                     const color = ayah.type === 'aameen' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(79, 70, 229, 0.2)'
                     if (existingRegion && existingRegion.element && existingRegion.element.style.backgroundColor !== color) {
                         existingRegion.setOptions({ color })
@@ -290,13 +269,11 @@ export default function AudioAnnotationApp() {
             }
         })
 
-        // Cleanup deleted regions
         regions.forEach(r => {
             if (!ayahs.find(a => a.id === r.id)) {
                 r.remove()
             }
         })
-
     }, [ayahs])
 
 
@@ -304,7 +281,6 @@ export default function AudioAnnotationApp() {
         if (file && wavesurferRef.current) {
             const url = URL.createObjectURL(file)
             wavesurferRef.current.load(url)
-            // Reset state
             setAyahs([])
             regionsPluginRef.current?.clearRegions()
             return () => URL.revokeObjectURL(url)
@@ -326,15 +302,11 @@ export default function AudioAnnotationApp() {
     const runAutoSegment = async () => {
         if (!wavesurferRef.current) return
         setIsProcessing(true)
-
-        // Small timeout to allow UI to show processing state
         setTimeout(() => {
             try {
                 const decodedData = wavesurferRef.current?.getDecodedData()
                 if (decodedData) {
                     const regions = detectSilentRegions(decodedData, minSilenceDuration, 0.5, silenceThreshold)
-
-                    // Convert regions to Ayahs
                     const newAyahs: AyahItem[] = regions.map((r, i) => ({
                         id: crypto.randomUUID(),
                         type: 'ayah',
@@ -342,8 +314,6 @@ export default function AudioAnnotationApp() {
                         start: r.start,
                         end: r.end
                     }))
-
-                    // Clear existing
                     regionsPluginRef.current?.clearRegions()
                     setAyahs(newAyahs)
                 }
@@ -362,7 +332,7 @@ export default function AudioAnnotationApp() {
             type: 'ayah',
             number: nextNumber,
             start: wavesurferRef.current ? wavesurferRef.current.getCurrentTime() : 0,
-            end: wavesurferRef.current ? wavesurferRef.current.getCurrentTime() + 2 : 2 // Default 2s duration
+            end: wavesurferRef.current ? wavesurferRef.current.getCurrentTime() + 2 : 2
         }
         setAyahs([...ayahs, newAyah])
     }
@@ -389,10 +359,7 @@ export default function AudioAnnotationApp() {
     }
 
     const removeAyah = (id: string) => {
-        setAyahs(prev => {
-            const filtered = prev.filter(a => a.id !== id);
-            return reIndexAyahs(filtered)
-        })
+        setAyahs(prev => reIndexAyahs(prev.filter(a => a.id !== id)))
     }
 
     const insertAyahAfter = (index: number) => {
@@ -402,13 +369,9 @@ export default function AudioAnnotationApp() {
             start: wavesurferRef.current ? wavesurferRef.current.getCurrentTime() : 0,
             end: wavesurferRef.current ? wavesurferRef.current.getCurrentTime() + 2 : 2
         }
-
         const newAyahs = [...ayahs];
         newAyahs.splice(index + 1, 0, newAyah);
-
-        // Re-index
-        const reindexed = reIndexAyahs(newAyahs);
-        setAyahs(reindexed);
+        setAyahs(reIndexAyahs(newAyahs));
     }
 
     const updateAyahField = (id: string, field: 'start' | 'end', val: number) => {
@@ -417,13 +380,11 @@ export default function AudioAnnotationApp() {
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-
         if (active.id !== over?.id) {
             setAyahs((items) => {
                 const oldIndex = items.findIndex(i => i.id === active.id);
                 const newIndex = items.findIndex(i => i.id === over?.id);
-                const newOrder = arrayMove(items, oldIndex, newIndex);
-                return reIndexAyahs(newOrder);
+                return reIndexAyahs(arrayMove(items, oldIndex, newIndex));
             });
         }
     }
@@ -443,11 +404,9 @@ export default function AudioAnnotationApp() {
 
     const playSegment = (id: string) => {
         if (!wavesurferRef.current) return
-
         const region = regionsPluginRef.current?.getRegions().find(r => r.id === id)
-        if (region) {
-            region.play()
-        } else {
+        if (region) region.play()
+        else {
             const ayah = ayahs.find(a => a.id === id)
             if (ayah && ayah.start !== null && ayah.end !== null) {
                 wavesurferRef.current.play(ayah.start, ayah.end)
@@ -457,25 +416,17 @@ export default function AudioAnnotationApp() {
 
     const exportData = () => {
         const exportAyahs = ayahs.map(a => {
-            const payload: any = {
-                start: a.start !== null ? parseFloat(a.start.toFixed(2)) : 0,
-                end: a.end !== null ? parseFloat(a.end.toFixed(2)) : 0
-            }
-            if (a.type === 'ayah') {
-                payload.ayah = a.number
-            } else {
-                payload.aameen = 1
-            }
+            const payload: any = { start: a.start!, end: a.end! }
+            if (a.type === 'ayah') payload.ayah = a.number
+            else payload.aameen = 1
             return payload
         })
-
         const data = {
             surah: parseInt(surahId) || 0,
-            surahName: surahName,
+            surahName,
             audio: file ? file.name : '',
             ayahs: exportAyahs
         }
-
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -487,224 +438,221 @@ export default function AudioAnnotationApp() {
         URL.revokeObjectURL(url)
     }
 
-    // Handle window resize
+    // Resize observer
     useEffect(() => {
-        const handleResize = () => {
-            if (wavesurferRef.current) {
-                setTimeout(() => {
-                    wavesurferRef.current?.setTime(wavesurferRef.current.getCurrentTime())
-                }, 100)
-            }
-        }
+        const handleResize = () => { if (wavesurferRef.current) setTimeout(() => wavesurferRef.current?.setTime(wavesurferRef.current.getCurrentTime()), 100) }
         window.addEventListener('resize', handleResize)
         return () => window.removeEventListener('resize', handleResize)
     }, [])
 
     return (
-        <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-900">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
 
-                {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100 gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                            SurahSync
-                        </h1>
-                        <p className="text-slate-500 text-sm mt-1">AI-Assisted Audio Annotation</p>
+            {/* 1. Header & Toolbar */}
+            <header className="flex-shrink-0 bg-white border-b border-slate-200 z-30 px-6 py-4 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-lg">
+                        <Activity className="w-6 h-6" />
                     </div>
-                    <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                        <Button variant="outline" onClick={() => document.getElementById('file-upload')?.click()} className="flex-1 md:flex-none">
-                            <FileAudio className="w-4 h-4 mr-2" />
-                            {file ? 'Change' : 'Upload Audio'}
-                        </Button>
-                        <input
-                            id="file-upload"
-                            type="file"
-                            accept="audio/mp3,audio/wav"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                        />
-                        <Button onClick={exportData} disabled={!file || ayahs.length === 0} className="bg-indigo-600 hover:bg-indigo-700 flex-1 md:flex-none">
-                            <Download className="w-4 h-4 mr-2" />
-                            Export
-                        </Button>
+                    <div>
+                        <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600">SurahSync</h1>
+                        <p className="text-xs text-slate-400 font-medium tracking-wide">AUDIO ANNOTATION SUITE</p>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="flex items-center gap-3">
+                    <div className="hidden md:flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <Input
+                            className="w-20 h-8 text-sm focus-visible:ring-0 border-none bg-transparent"
+                            placeholder="ID"
+                            type="number"
+                            value={surahId}
+                            onChange={(e) => setSurahId(e.target.value)}
+                        />
+                        <div className="w-[1px] bg-slate-300 my-1"></div>
+                        <Input
+                            className="w-32 h-8 text-sm focus-visible:ring-0 border-none bg-transparent"
+                            placeholder="Surah Name"
+                            value={surahName}
+                            onChange={(e) => setSurahName(e.target.value)}
+                        />
+                    </div>
 
-                    {/* Left Column: Tools & Info */}
-                    <div className="lg:col-span-1 space-y-6 order-2 lg:order-1">
+                    <div className="h-8 w-[1px] bg-slate-200 mx-2 hidden md:block"></div>
 
-                        {/* Auto Segmenation Controls */}
-                        <Card className="shadow-sm border-slate-100 bg-indigo-50/50">
-                            <CardHeader className="pb-3">
-                                <CardTitle className="flex items-center gap-2 text-indigo-900">
-                                    <Wand2 className="w-4 h-4" /> Auto-Segmentation
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-xs text-slate-500 font-medium uppercase">
-                                        <span>Silence Threshold</span>
-                                        <span>{Math.round(silenceThreshold * 100)}%</span>
+                    <Button variant="outline" size="sm" onClick={() => document.getElementById('file-upload')?.click()} className="text-slate-600 hover:text-indigo-600 hover:border-indigo-200">
+                        <FileAudio className="w-4 h-4 mr-2" />
+                        {file ? 'Change Audio' : 'Upload'}
+                    </Button>
+                    <input id="file-upload" type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
+
+                    <Button onClick={exportData} disabled={!file || ayahs.length === 0} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100">
+                        <Download className="w-4 h-4 mr-2" /> Export JSON
+                    </Button>
+                </div>
+            </header>
+
+            {/* 2. Main Content Area */}
+            <main className="flex-grow flex overflow-hidden">
+
+                {/* Left Sidebar: Settings */}
+                <aside className="w-80 flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto hidden md:flex flex-col">
+                    <div className="p-6 space-y-8">
+
+                        {/* Auto-Segment */}
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-indigo-900 font-semibold text-sm uppercase tracking-wider pb-2 border-b border-indigo-50">
+                                <Wand2 className="w-4 h-4 text-indigo-500" /> Auto-Detect
+                            </div>
+
+                            <div className="space-y-5">
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-xs font-medium text-slate-500">
+                                        <span>Silence Sensitivity</span>
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700">{Math.round(silenceThreshold * 1000)}</span>
                                     </div>
                                     <input
-                                        type="range"
-                                        min="0.001"
-                                        max="0.1"
-                                        step="0.001"
+                                        type="range" min="0.001" max="0.1" step="0.001"
                                         value={silenceThreshold}
                                         onChange={(e) => setSilenceThreshold(parseFloat(e.target.value))}
-                                        className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-xs text-slate-500 font-medium uppercase">
-                                        <span>Min Silence Duration</span>
-                                        <span>{minSilenceDuration}s</span>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-xs font-medium text-slate-500">
+                                        <span>Min Pause Duration</span>
+                                        <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-700">{minSilenceDuration}s</span>
                                     </div>
                                     <input
-                                        type="range"
-                                        min="0.1"
-                                        max="2.0"
-                                        step="0.1"
+                                        type="range" min="0.1" max="2.0" step="0.1"
                                         value={minSilenceDuration}
                                         onChange={(e) => setMinSilenceDuration(parseFloat(e.target.value))}
-                                        className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                                     />
                                 </div>
+
                                 <Button
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700 mt-2"
+                                    className="w-full bg-slate-900 text-white hover:bg-indigo-900 transition-all font-medium"
                                     onClick={runAutoSegment}
                                     disabled={!file || isProcessing}
                                 >
-                                    {isProcessing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Wand2 className="w-4 h-4 mr-2" />}
-                                    {isProcessing ? 'Processing...' : 'Run Auto-Detect'}
+                                    {isProcessing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Layers className="w-4 h-4 mr-2" />}
+                                    {isProcessing ? 'Processing Audio...' : 'Run Analysis'}
                                 </Button>
-                                <p className="text-[10px] text-slate-500 text-center leading-tight">
-                                    Detects ayahs based on pauses. Adjust slider if it misses segments or splits too often.
-                                </p>
-                            </CardContent>
-                        </Card>
 
-                        <Card className="shadow-sm border-slate-100">
-                            <CardHeader>
-                                <CardTitle>Metadata</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div>
-                                    <label className="text-xs font-semibold uppercase text-slate-500 mb-1 block">Surah ID</label>
-                                    <Input
-                                        placeholder="e.g. 1"
-                                        value={surahId}
-                                        onChange={(e) => setSurahId(e.target.value)}
-                                        type="number"
-                                    />
+                                <p className="text-[11px] text-slate-400 leading-relaxed text-center">
+                                    Adjust sensitivity if segments are skipped or split incorrectly.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Stats / Info */}
+                        {file && (
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-slate-500">Duration</span>
+                                    <span className="font-mono font-medium">{formatTime(duration)}</span>
                                 </div>
-                                <div>
-                                    <label className="text-xs font-semibold uppercase text-slate-500 mb-1 block">Surah Name</label>
-                                    <Input
-                                        placeholder="e.g. Al-Fatiha"
-                                        value={surahName}
-                                        onChange={(e) => setSurahName(e.target.value)}
-                                    />
+                                <div className="flex justify-between text-xs">
+                                    <span className="text-slate-500">Segments</span>
+                                    <span className="font-mono font-medium">{ayahs.length}</span>
                                 </div>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        )}
+                    </div>
+                </aside>
+
+                {/* Main Workspace */}
+                <div className="flex-grow flex flex-col min-w-0 bg-slate-50/50">
+
+                    {/* Sticky Waveform Player */}
+                    <div className="flex-shrink-0 bg-white border-b border-indigo-100 shadow-sm z-20 sticky top-0">
+                        <div className="relative group h-32 bg-slate-900">
+                            <div id="waveform" ref={waveformRef} className="w-full h-full opacity-90" />
+
+                            {/* Controls Overlay */}
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/80 backdrop-blur-md px-6 py-2 rounded-full border border-white/10 shadow-2xl transition-all opacity-0 group-hover:opacity-100">
+                                <button onClick={() => wavesurferRef.current?.skip(-5)} className="text-slate-400 hover:text-white transition-colors"><SkipBack className="w-5 h-5" /></button>
+                                <button onClick={togglePlayPause} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition-transform">
+                                    {isPlaying ? <Pause className="w-4 h-4 fill-black" /> : <Play className="w-4 h-4 translate-x-0.5 fill-black" />}
+                                </button>
+                                <button onClick={() => wavesurferRef.current?.skip(5)} className="text-slate-400 hover:text-white transition-colors"><SkipForward className="w-5 h-5" /></button>
+                            </div>
+
+                            {/* Time Display Overlay */}
+                            <div className="absolute top-4 right-6 font-mono text-xs text-white/70 bg-black/20 px-2 py-1 rounded">
+                                {formatTime(currentTime)} / {formatTime(duration)}
+                            </div>
+
+                            {!file && <div className="absolute inset-0 flex items-center justify-center text-slate-500 bg-slate-900">Upload audio to visualize</div>}
+                        </div>
                     </div>
 
-                    {/* Right Column: Waveform & List */}
-                    <div className="lg:col-span-2 space-y-6 order-1 lg:order-2">
+                    {/* Scrollable Ayah List */}
+                    <div className="flex-grow overflow-y-auto p-4 md:p-8 relative">
+                        <div className="max-w-3xl mx-auto pb-20">
 
-                        {/* Waveform Player */}
-                        <Card className="overflow-hidden shadow-sm border-slate-100">
-                            <div className="p-4 md:p-6 bg-slate-900 relative group">
-                                <div id="waveform" ref={waveformRef} className="w-full" />
-
-                                {/* Centered Play Button Overlay */}
-                                {file && !isPlaying && (
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <div className="bg-white/10 backdrop-blur-sm rounded-full p-4 border border-white/20 shadow-2xl">
-                                            <Play className="w-8 h-8 text-white fill-white" />
-                                        </div>
+                            {/* Empty State */}
+                            {ayahs.length === 0 && (
+                                <div className="text-center mt-20 p-10 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
+                                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                        <Music className="w-8 h-8 text-indigo-300" />
                                     </div>
-                                )}
-
-                                {!file && (
-                                    <div className="h-[120px] flex items-center justify-center text-slate-500 text-sm border-2 border-dashed border-slate-700 rounded-lg text-center p-4">
-                                        Upload an audio file to start
+                                    <h3 className="text-lg font-semibold text-slate-700">No Segments Yet</h3>
+                                    <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto">Upload an audio file and run auto-detection, or add segments manually.</p>
+                                    <div className="flex justify-center gap-3 mt-6">
+                                        <Button variant="outline" onClick={addAyah}>
+                                            <Plus className="w-4 h-4 mr-2" /> Add Manual
+                                        </Button>
                                     </div>
-                                )}
-                            </div>
-                            <CardContent className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-                                <div className="flex gap-2">
-                                    <Button variant="ghost" size="icon" onClick={() => wavesurferRef.current?.skip(-5)}>
-                                        <SkipBack className="w-5 h-5 text-slate-600" />
-                                    </Button>
-                                    <Button variant="outline" size="icon" onClick={togglePlayPause} className="border-slate-300">
-                                        {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-                                    </Button>
-                                    <Button variant="ghost" size="icon" onClick={() => wavesurferRef.current?.skip(5)}>
-                                        <SkipForward className="w-5 h-5 text-slate-600" />
-                                    </Button>
                                 </div>
-                                <div className="font-mono text-sm font-medium text-slate-600">
-                                    {formatTime(currentTime)} / {formatTime(duration)}
-                                </div>
-                            </CardContent>
-                        </Card>
+                            )}
 
-                        {/* Ayah List */}
-                        <Card className="shadow-sm border-slate-100">
-                            <CardHeader className="flex flex-row items-center justify-between pb-3">
-                                <CardTitle>Segments ({ayahs.length})</CardTitle>
-                                <div className="flex gap-2">
-                                    <Button size="sm" onClick={addAyah} variant="outline" className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 h-8">
-                                        <Plus className="w-3.5 h-3.5 mr-1" /> Add
-                                    </Button>
-                                    <Button size="sm" onClick={addAameen} variant="outline" className="text-purple-600 border-purple-200 hover:bg-purple-50 h-8" disabled={ayahs.some(a => a.type === 'aameen')}>
-                                        <Save className="w-3.5 h-3.5 mr-1" /> Aameen
-                                    </Button>
+                            {/* List Header */}
+                            {ayahs.length > 0 && (
+                                <div className="flex items-center justify-between mb-6 px-2">
+                                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Timeline</h2>
+                                    <div className="flex gap-2">
+                                        <Button size="sm" onClick={addAyah} variant="ghost" className="text-indigo-600 hover:bg-indigo-50">
+                                            <Plus className="w-4 h-4 mr-1" /> Add Segment
+                                        </Button>
+                                        <Button size="sm" onClick={addAameen} variant="ghost" className="text-purple-600 hover:bg-purple-50" disabled={ayahs.some(a => a.type === 'aameen')}>
+                                            <Plus className="w-4 h-4 mr-1" /> Add Aameen
+                                        </Button>
+                                    </div>
                                 </div>
-                            </CardHeader>
-                            <CardContent className="max-h-[500px] overflow-y-auto pr-2">
-                                <div className="space-y-3">
-                                    {ayahs.length === 0 && (
-                                        <div className="text-center py-10 text-slate-400 text-sm border-2 border-dashed border-slate-100 rounded-xl">
-                                            <p>No segments yet.</p>
-                                            <p className="text-xs mt-1">Upload audio and click "Run Auto-Detect"</p>
-                                        </div>
-                                    )}
-                                    <DndContext
-                                        sensors={sensors}
-                                        collisionDetection={closestCenter}
-                                        onDragEnd={handleDragEnd}
-                                    >
-                                        <SortableContext
-                                            items={ayahs.map(a => a.id)}
-                                            strategy={verticalListSortingStrategy}
-                                        >
-                                            {ayahs.map((ayah, index) => (
-                                                <SortableAyahItem
-                                                    key={ayah.id}
-                                                    ayah={ayah}
-                                                    index={index}
-                                                    onRemove={removeAyah}
-                                                    onCapture={captureTime}
-                                                    onUpdate={updateAyahField}
-                                                    onInsertAfter={insertAyahAfter}
-                                                    onPlay={playSegment}
-                                                />
-                                            ))}
-                                        </SortableContext>
-                                    </DndContext>
-                                </div>
-                            </CardContent>
-                        </Card>
+                            )}
+
+                            <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleDragEnd}
+                            >
+                                <SortableContext
+                                    items={ayahs.map(a => a.id)}
+                                    strategy={verticalListSortingStrategy}
+                                >
+                                    {ayahs.map((ayah, index) => (
+                                        <SortableAyahItem
+                                            key={ayah.id}
+                                            ayah={ayah}
+                                            index={index}
+                                            onRemove={removeAyah}
+                                            onCapture={captureTime}
+                                            onUpdate={updateAyahField}
+                                            onInsertAfter={insertAyahAfter}
+                                            onPlay={playSegment}
+                                        />
+                                    ))}
+                                </SortableContext>
+                            </DndContext>
+
+                            {/* Bottom Safe Space */}
+                            <div className="h-20"></div>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </main>
         </div>
     )
 }

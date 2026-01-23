@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Play, Pause, Download, Plus, Trash2, SkipBack, SkipForward, FileAudio, Save, Wand2, RefreshCw, GripVertical, Activity, Layers, Music, Settings2, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { detectSilentRegions } from '@/lib/audio-utils'
+import { detectSilentRegions, sliceAudioBuffer, audioBufferToWav } from '@/lib/audio-utils'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 import {
     DndContext,
     closestCenter,
@@ -202,6 +204,18 @@ export default function AudioAnnotationApp() {
     // Auto-segmentation settings
     const [silenceThreshold, setSilenceThreshold] = useState(0.02)
     const [minSilenceDuration, setMinSilenceDuration] = useState(0.8)
+
+    // Export settings
+    const [startCount, setStartCount] = useState<number>(1)
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+    const [exportPrefix, setExportPrefix] = useState('')
+    const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(new Set())
+
+    // Initialize selectedExportIds when ayahs change
+    useEffect(() => {
+        if (!isExportModalOpen) return
+        setSelectedExportIds(new Set(ayahs.filter(a => a.type === 'ayah').map(a => a.id)))
+    }, [ayahs, isExportModalOpen])
 
     const waveformRef = useRef<HTMLDivElement>(null)
     const wavesurferRef = useRef<Wavesurfer | null>(null)
@@ -464,6 +478,77 @@ export default function AudioAnnotationApp() {
         URL.revokeObjectURL(url)
     }
 
+    const toggleExportSelection = (id: string) => {
+        const newSet = new Set(selectedExportIds)
+        if (newSet.has(id)) newSet.delete(id)
+        else newSet.add(id)
+        setSelectedExportIds(newSet)
+    }
+
+    const toggleSelectAll = () => {
+        const allAyahIds = ayahs.filter(a => a.type === 'ayah').map(a => a.id)
+        if (selectedExportIds.size === allAyahIds.length) {
+            setSelectedExportIds(new Set())
+        } else {
+            setSelectedExportIds(new Set(allAyahIds))
+        }
+    }
+
+    const calculateFilename = (index: number) => {
+        const num = startCount + index
+        return `${exportPrefix}${num}.wav`
+    }
+
+    const exportZip = async () => {
+        if (!wavesurferRef.current) return
+        setIsProcessing(true)
+
+        try {
+            const buffer = wavesurferRef.current.getDecodedData()
+            if (!buffer) throw new Error("No audio data")
+
+            const zip = new JSZip()
+            const ayahSegments = ayahs.filter(a => a.type === 'ayah')
+
+            let processedCount = 0
+
+            for (let i = 0; i < ayahSegments.length; i++) {
+                const ayah = ayahSegments[i]
+                if (!selectedExportIds.has(ayah.id) || ayah.start === null || ayah.end === null) continue;
+
+                // Slice and convert
+                const segmentBuffer = sliceAudioBuffer(buffer, ayah.start, ayah.end)
+                const blob = audioBufferToWav(segmentBuffer)
+
+                // Add to zip with correctly calculated name
+                const filename = calculateFilename(i)
+                zip.file(filename, blob)
+
+                processedCount++
+
+                if (processedCount % 5 === 0) {
+                    // Yield to UI every few files
+                    await new Promise(resolve => setTimeout(resolve, 0))
+                }
+            }
+
+            if (processedCount === 0) {
+                alert("No segments selected!")
+                return
+            }
+
+            const content = await zip.generateAsync({ type: "blob" })
+            saveAs(content, `${surahName || 'audio_segments'}.zip`)
+            setIsExportModalOpen(false)
+
+        } catch (e) {
+            console.error(e)
+            alert("Error creating ZIP archive")
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
     // Resize observer
     useEffect(() => {
         const handleResize = () => { if (wavesurferRef.current) setTimeout(() => wavesurferRef.current?.setTime(wavesurferRef.current.getCurrentTime()), 100) }
@@ -611,9 +696,30 @@ export default function AudioAnnotationApp() {
                             </div>
                         </div>
 
+                        {/* Export Audio Section */}
+                        <div className="space-y-4 pt-6 border-t border-slate-100">
+                            <div className="flex items-center gap-2 text-indigo-900 font-semibold text-sm uppercase tracking-wider pb-2 border-b border-indigo-50">
+                                <FileAudio className="w-4 h-4 text-indigo-500" /> Export Audio
+                            </div>
+
+                            <div className="space-y-3">
+                                <Button
+                                    className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-all font-medium py-6"
+                                    onClick={() => setIsExportModalOpen(true)}
+                                    disabled={!file || ayahs.length === 0}
+                                >
+                                    <FileAudio className="w-5 h-5 mr-2" />
+                                    Open Export Studio
+                                </Button>
+                                <p className="text-[11px] text-slate-400 leading-relaxed text-center">
+                                    Customize filenames, bulk export to ZIP, or select specific segments.
+                                </p>
+                            </div>
+                        </div>
+
                         {/* Stats / Info */}
                         {file && (
-                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2 mt-4">
                                 <div className="flex justify-between text-xs">
                                     <span className="text-slate-500">Duration</span>
                                     <span className="font-mono font-medium">{formatTime(duration)}</span>
@@ -728,6 +834,139 @@ export default function AudioAnnotationApp() {
                     </div>
                 </div>
             </main>
+
+            {/* Export Dialog Overlay */}
+            {isExportModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-indigo-200 shadow-md">
+                                    <FileAudio className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-slate-800">Export Studio</h2>
+                                    <p className="text-xs text-slate-500 font-medium">Bulk export audio segments</p>
+                                </div>
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={() => setIsExportModalOpen(false)}>
+                                <X className="w-5 h-5 text-slate-400" />
+                            </Button>
+                        </div>
+
+                        <div className="flex flex-col md:flex-row h-full overflow-hidden">
+                            {/* Settings Panel */}
+                            <div className="w-full md:w-72 bg-slate-50 p-6 border-r border-slate-100 flex-shrink-0 space-y-6 overflow-y-auto">
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Configuration</h3>
+
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-slate-700">Starting ID</label>
+                                        <Input
+                                            type="number"
+                                            value={startCount}
+                                            onChange={(e) => setStartCount(parseInt(e.target.value) || 1)}
+                                            className="bg-white"
+                                        />
+                                        <p className="text-[10px] text-slate-400">The number for the first segment</p>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-medium text-slate-700">Filename Prefix</label>
+                                        <Input
+                                            placeholder="e.g. surah_"
+                                            value={exportPrefix}
+                                            onChange={(e) => setExportPrefix(e.target.value)}
+                                            className="bg-white"
+                                        />
+                                        <p className="text-[10px] text-slate-400">Optional text before the number</p>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-slate-200">
+                                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg space-y-1 text-indigo-900">
+                                        <p className="text-xs font-bold uppercase">Example Output</p>
+                                        <p className="font-mono text-sm">{exportPrefix}{startCount}.wav</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Preview Table */}
+                            <div className="flex-grow flex flex-col min-w-0 bg-white">
+                                <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 bg-white">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-bold text-slate-700">Segments Preview</h3>
+                                        <div className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                            {selectedExportIds.size} selected
+                                        </div>
+                                    </div>
+                                    <Button size="sm" variant="ghost" onClick={toggleSelectAll} className="h-8 text-xs">
+                                        {selectedExportIds.size === ayahs.filter(a => a.type === 'ayah').length ? 'Deselect All' : 'Select All'}
+                                    </Button>
+                                </div>
+
+                                <div className="flex-grow overflow-y-auto p-0">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-slate-50 sticky top-0 z-10 text-xs font-bold text-slate-500 uppercase">
+                                            <tr>
+                                                <th className="px-6 py-3 w-12 border-b border-slate-100">
+                                                    #
+                                                </th>
+                                                <th className="px-6 py-3 border-b border-slate-100">Segment</th>
+                                                <th className="px-6 py-3 border-b border-slate-100">Time Range</th>
+                                                <th className="px-6 py-3 border-b border-slate-100">Filename</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="text-sm divide-y divide-slate-50">
+                                            {ayahs.filter(a => a.type === 'ayah').map((ayah, index) => (
+                                                <tr key={ayah.id} className={cn("hover:bg-slate-50 transition-colors", !selectedExportIds.has(ayah.id) && "opacity-50 grayscale")}>
+                                                    <td className="px-6 py-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedExportIds.has(ayah.id)}
+                                                            onChange={() => toggleExportSelection(ayah.id)}
+                                                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-3 font-medium text-slate-700">
+                                                        Segment {ayah.number}
+                                                    </td>
+                                                    <td className="px-6 py-3 font-mono text-xs text-slate-500">
+                                                        {formatTime(ayah.start || 0)} - {formatTime(ayah.end || 0)}
+                                                    </td>
+                                                    <td className="px-6 py-3 font-mono text-indigo-600 font-medium">
+                                                        {calculateFilename(index)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {ayahs.filter(a => a.type === 'ayah').length === 0 && (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                                                        No segments found. Add segments to export.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Footer Action */}
+                                <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 items-center">
+                                    <div className="mr-auto text-xs text-slate-400 hidden sm:block">
+                                        ZIP archive will contain {selectedExportIds.size} files
+                                    </div>
+                                    <Button variant="ghost" onClick={() => setIsExportModalOpen(false)}>Cancel</Button>
+                                    <Button onClick={exportZip} disabled={isProcessing || selectedExportIds.size === 0} className="bg-indigo-600 hover:bg-indigo-700 text-white min-w-[140px]">
+                                        {isProcessing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                        Download .ZIP
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

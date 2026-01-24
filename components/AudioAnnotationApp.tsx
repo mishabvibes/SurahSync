@@ -8,9 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Play, Pause, Download, Plus, Trash2, SkipBack, SkipForward, FileAudio, Save, Wand2, RefreshCw, GripVertical, Activity, Layers, Music, Settings2, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { detectSilentRegions, sliceAudioBuffer, audioBufferToWav } from '@/lib/audio-utils'
+import { detectSilentRegions } from '@/lib/audio-utils'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import {
     DndContext,
     closestCenter,
@@ -221,6 +223,7 @@ export default function AudioAnnotationApp() {
     const wavesurferRef = useRef<Wavesurfer | null>(null)
     const regionsPluginRef = useRef<RegionsPlugin | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const ffmpegRef = useRef<FFmpeg | null>(null);
 
     // DnD Sensors
     const sensors = useSensors(
@@ -496,19 +499,35 @@ export default function AudioAnnotationApp() {
 
     const calculateFilename = (index: number) => {
         const num = startCount + index
-        return `${exportPrefix}${num}.wav`
+        return `${exportPrefix}${num}.mp3`
     }
 
     const exportZip = async () => {
-        if (!wavesurferRef.current) return
+        if (!file) return
         setIsProcessing(true)
 
+        if (!ffmpegRef.current) {
+            ffmpegRef.current = new FFmpeg();
+        }
+        const ffmpeg = ffmpegRef.current as FFmpeg
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+
         try {
-            const buffer = wavesurferRef.current.getDecodedData()
-            if (!buffer) throw new Error("No audio data")
+            if (!ffmpeg.loaded) {
+                await ffmpeg.load({
+                    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+                })
+            }
 
             const zip = new JSZip()
             const ayahSegments = ayahs.filter(a => a.type === 'ayah')
+
+            // Generate a safe input filename
+            const inputExt = file.name.split('.').pop() || 'mp3'
+            const inputFileName = `input.${inputExt}`
+
+            await ffmpeg.writeFile(inputFileName, await fetchFile(file))
 
             let processedCount = 0
 
@@ -516,21 +535,35 @@ export default function AudioAnnotationApp() {
                 const ayah = ayahSegments[i]
                 if (!selectedExportIds.has(ayah.id) || ayah.start === null || ayah.end === null) continue;
 
-                // Slice and convert
-                const segmentBuffer = sliceAudioBuffer(buffer, ayah.start, ayah.end)
-                const blob = audioBufferToWav(segmentBuffer)
+                // Precision conversion
+                const outputName = calculateFilename(i)
+                const duration = ayah.end - ayah.start
 
-                // Add to zip with correctly calculated name
-                const filename = calculateFilename(i)
-                zip.file(filename, blob)
+                // Using 320k for high quality
+                await ffmpeg.exec([
+                    '-i', inputFileName,
+                    '-ss', ayah.start.toFixed(3),
+                    '-t', duration.toFixed(3),
+                    '-map', '0:a', // Ensure we only map audio
+                    '-b:a', '320k',
+                    outputName
+                ])
+
+                const data = await ffmpeg.readFile(outputName)
+                zip.file(outputName, data)
+
+                // Cleanup chunk
+                await ffmpeg.deleteFile(outputName)
 
                 processedCount++
 
                 if (processedCount % 5 === 0) {
-                    // Yield to UI every few files
                     await new Promise(resolve => setTimeout(resolve, 0))
                 }
             }
+
+            // Cleanup input
+            await ffmpeg.deleteFile(inputFileName)
 
             if (processedCount === 0) {
                 alert("No segments selected!")
@@ -541,9 +574,9 @@ export default function AudioAnnotationApp() {
             saveAs(content, `${surahName || 'audio_segments'}.zip`)
             setIsExportModalOpen(false)
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e)
-            alert("Error creating ZIP archive")
+            alert("Export Error: " + (e.message || "Unknown error"))
         } finally {
             setIsProcessing(false)
         }
@@ -887,7 +920,7 @@ export default function AudioAnnotationApp() {
                                 <div className="pt-4 border-t border-slate-200">
                                     <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg space-y-1 text-indigo-900">
                                         <p className="text-xs font-bold uppercase">Example Output</p>
-                                        <p className="font-mono text-sm">{exportPrefix}{startCount}.wav</p>
+                                        <p className="font-mono text-sm">{exportPrefix}{startCount}.mp3</p>
                                     </div>
                                 </div>
                             </div>

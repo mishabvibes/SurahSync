@@ -167,3 +167,77 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
 
     return new Blob([bufferArray], { type: 'audio/wav' });
 }
+
+export async function audioBufferToMp3(buffer: AudioBuffer): Promise<Blob> {
+    if (typeof window === 'undefined') {
+        throw new Error("Audio conversion only supported in browser");
+    }
+
+    // @ts-ignore
+    if (!window.lamejs) {
+        await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/lame.min.js';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error("Failed to load lame.min.js"));
+            document.head.appendChild(script);
+        });
+    }
+
+    // @ts-ignore
+    const lamejs = window.lamejs;
+    if (!lamejs) {
+        throw new Error("lamejs loaded but not found on window");
+    }
+
+    const channels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 320);
+
+    // We need to get all samples
+    const left = buffer.getChannelData(0);
+    const right = channels > 1 ? buffer.getChannelData(1) : undefined;
+
+    const sampleBlockSize = 1152;
+    const mp3Data = [];
+
+    // Convert Float32 to Int16 with clamping to avoid distortion/wrap-around
+    const leftInt16 = new Int16Array(left.length);
+    for (let i = 0; i < left.length; i++) {
+        const s = Math.max(-1, Math.min(1, left[i]));
+        leftInt16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+
+    let rightInt16: Int16Array | undefined;
+    if (right) {
+        rightInt16 = new Int16Array(right.length);
+        for (let i = 0; i < right.length; i++) {
+            const s = Math.max(-1, Math.min(1, right[i]));
+            rightInt16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+    }
+
+
+    for (let i = 0; i < leftInt16.length; i += sampleBlockSize) {
+        const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
+        let mp3buf;
+
+        if (channels === 1) {
+            mp3buf = mp3encoder.encodeBuffer(leftChunk);
+        } else {
+            const rightChunk = rightInt16!.subarray(i, i + sampleBlockSize);
+            mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+        }
+
+        if (mp3buf.length > 0) {
+            mp3Data.push(mp3buf);
+        }
+    }
+
+    const mp3buf = mp3encoder.flush();
+    if (mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+    }
+
+    return new Blob(mp3Data, { type: 'audio/mp3' });
+}

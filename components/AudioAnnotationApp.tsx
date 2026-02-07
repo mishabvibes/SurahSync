@@ -233,36 +233,98 @@ export default function AudioAnnotationApp() {
         })
     );
 
+    const [largeFileWarning, setLargeFileWarning] = useState<{ show: boolean, file: File | null }>({ show: false, file: null })
+    const [disableWaveform, setDisableWaveform] = useState(false)
+
     useEffect(() => {
-        if (waveformRef.current && !wavesurferRef.current) {
-            wavesurferRef.current = Wavesurfer.create({
+        if (!file) return
+
+        let ws: Wavesurfer | null = null
+        let audio: HTMLAudioElement | null = null
+        const url = URL.createObjectURL(file)
+
+        // Cleanup function
+        const cleanup = () => {
+            if (ws) {
+                ws.destroy()
+                ws = null
+            }
+            if (audio) {
+                audio.pause()
+                audio = null
+            }
+            // Clear ref if it matches our instance (prevents clearing if a new one was already created)
+            if (wavesurferRef.current === ws || (wavesurferRef.current as any) === audio) {
+                // wavesurferRef.current = null 
+                // Actually we should just set it to null but be careful not to nullify a new instance
+                // React effects run sequentially so this is fine.
+                wavesurferRef.current = null
+            }
+            URL.revokeObjectURL(url)
+        }
+
+        if (disableWaveform) {
+            // Simple Audio Player Mode (Performance Mode / Fallback)
+            const audioInstance = new Audio(url)
+            audio = audioInstance
+
+            audioInstance.onloadedmetadata = () => setDuration(audioInstance.duration)
+            audioInstance.ontimeupdate = () => setCurrentTime(audioInstance.currentTime)
+            audioInstance.onplay = () => setIsPlaying(true)
+            audioInstance.onpause = () => setIsPlaying(false)
+
+            const fakeWs = {
+                play: async () => await audioInstance.play(),
+                pause: () => audioInstance.pause(),
+                playPause: async () => { if (audioInstance.paused) await audioInstance.play(); else audioInstance.pause(); },
+                getCurrentTime: () => audioInstance.currentTime || 0,
+                setTime: (t: number) => { audioInstance.currentTime = t },
+                getDecodedData: () => null,
+                skip: (n: number) => { audioInstance.currentTime += n },
+                destroy: () => audioInstance.pause(),
+                load: () => { },
+                on: () => { },
+                registerPlugin: () => { }
+            }
+            // @ts-ignore
+            wavesurferRef.current = fakeWs
+        } else if (waveformRef.current) {
+            // Full Waveform Mode
+            ws = Wavesurfer.create({
                 container: waveformRef.current,
-                waveColor: '#4f46e5',
-                progressColor: '#818cf8',
-                cursorColor: '#c7d2fe',
-                barWidth: 2,
-                barGap: 3,
-                height: 96, // Slightly compact
+                waveColor: '#6366f1', // Indigo-500 (Vibrant)
+                progressColor: '#c7d2fe', // Indigo-200
+                cursorColor: '#f472b6', // Pink-400
+                barWidth: 3,
+                barGap: 2,
+                barRadius: 3,
+                height: 128, // Fix height 128px
                 normalize: true,
                 plugins: [],
-                minPxPerSec: 50, // Better zoom by default
+                minPxPerSec: 60,
+                fillParent: true,
+                autoScroll: true,
+                interact: true,
             })
 
-            // Initialize Regions Plugin
+            // Initialize Regions
             const wsRegions = RegionsPlugin.create()
-            wavesurferRef.current.registerPlugin(wsRegions)
+            ws.registerPlugin(wsRegions)
             regionsPluginRef.current = wsRegions
 
             // Event Listeners
-            wavesurferRef.current.on('play', () => setIsPlaying(true))
-            wavesurferRef.current.on('pause', () => setIsPlaying(false))
-            wavesurferRef.current.on('timeupdate', (time) => setCurrentTime(time))
-            wavesurferRef.current.on('ready', (d) => setDuration(d))
-            wavesurferRef.current.on('decode', () => {
+            ws.on('play', () => setIsPlaying(true))
+            ws.on('pause', () => setIsPlaying(false))
+            ws.on('timeupdate', (time) => setCurrentTime(time))
+            ws.on('ready', (d) => {
+                setDuration(d)
+                // Auto-zoom if needed or just fit
+            })
+            ws.on('decode', () => {
                 regionsPluginRef.current?.clearRegions()
             })
 
-            // Sync Region dragging/resizing to State
+            // Region Events
             wsRegions.on('region-updated', (region) => {
                 setAyahs(prev => prev.map(a => {
                     if (a.id === region.id) {
@@ -272,17 +334,17 @@ export default function AudioAnnotationApp() {
                 }))
             })
 
-            // Select region on click
             wsRegions.on('region-clicked', (region, e) => {
                 e.stopPropagation()
                 region.play()
             })
+
+            wavesurferRef.current = ws
+            ws.load(url)
         }
 
-        return () => {
-            // Optional cleanup
-        }
-    }, [])
+        return cleanup
+    }, [file, disableWaveform])
 
     useEffect(() => {
         if (!regionsPluginRef.current) return;
@@ -320,20 +382,27 @@ export default function AudioAnnotationApp() {
     }, [ayahs])
 
 
-    useEffect(() => {
-        if (file && wavesurferRef.current) {
-            const url = URL.createObjectURL(file)
-            wavesurferRef.current.load(url)
-            setAyahs([])
-            regionsPluginRef.current?.clearRegions()
-            return () => URL.revokeObjectURL(url)
-        }
-    }, [file])
+
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0])
+            const selectedFile = e.target.files[0]
+            // > 150MB check
+            if (selectedFile.size > 150 * 1024 * 1024) {
+                setLargeFileWarning({ show: true, file: selectedFile })
+            } else {
+                setFile(selectedFile)
+                setDisableWaveform(false)
+            }
         }
+    }
+
+    const confirmLargeFile = (disableViz: boolean) => {
+        if (largeFileWarning.file) {
+            setDisableWaveform(disableViz)
+            setFile(largeFileWarning.file)
+        }
+        setLargeFileWarning({ show: false, file: null })
     }
 
     const togglePlayPause = () => {
@@ -343,29 +412,46 @@ export default function AudioAnnotationApp() {
     }
 
     const runAutoSegment = async () => {
-        if (!wavesurferRef.current) return
         setIsProcessing(true)
-        setTimeout(() => {
-            try {
-                const decodedData = wavesurferRef.current?.getDecodedData()
-                if (decodedData) {
-                    const regions = detectSilentRegions(decodedData, minSilenceDuration, 0.5, silenceThreshold)
-                    const newAyahs: AyahItem[] = regions.map((r, i) => ({
-                        id: crypto.randomUUID(),
-                        type: 'ayah',
-                        number: i + 1,
-                        start: r.start,
-                        end: r.end
-                    }))
-                    regionsPluginRef.current?.clearRegions()
-                    setAyahs(newAyahs)
+        // Give UI a moment to update spinner
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        try {
+            let decodedData = wavesurferRef.current?.getDecodedData()
+
+            // Manual decode fallback for Performance Mode
+            if (!decodedData && file) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer()
+                    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+                    decodedData = await audioCtx.decodeAudioData(arrayBuffer)
+                } catch (err) {
+                    console.error("Manual decode failed", err)
+                    alert("Could not analyze this file. It might be too large for the browser's memory.")
+                    setIsProcessing(false)
+                    return
                 }
-            } catch (e) {
-                console.error(e)
-                alert("Error analyzing audio. Try adjusting settings.")
             }
-            setIsProcessing(false)
-        }, 100)
+
+            if (decodedData) {
+                const regions = detectSilentRegions(decodedData, minSilenceDuration, 0.5, silenceThreshold)
+                const newAyahs: AyahItem[] = regions.map((r, i) => ({
+                    id: crypto.randomUUID(),
+                    type: 'ayah',
+                    number: i + 1,
+                    start: r.start,
+                    end: r.end
+                }))
+
+                // Clear existing regions if plugin is active
+                regionsPluginRef.current?.clearRegions()
+                setAyahs(newAyahs)
+            }
+        } catch (e) {
+            console.error(e)
+            alert("Error analyzing audio. Try adjusting settings.")
+        }
+        setIsProcessing(false)
     }
 
     const addAyah = () => {
@@ -592,6 +678,31 @@ export default function AudioAnnotationApp() {
     return (
         <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
 
+            {/* Large File Warning Dialog */}
+            {largeFileWarning.show && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-slate-200 text-center space-y-4">
+                        <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-600">
+                            <Activity className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800">Large File Detected</h3>
+                            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                                This file ({Math.round(largeFileWarning.file!.size / 1024 / 1024)}MB) is very large.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2 pt-2">
+                            <Button onClick={() => confirmLargeFile(true)} className="w-full bg-slate-900 hover:bg-slate-800">
+                                Simple Player (Safe Mode)
+                            </Button>
+                            <Button onClick={() => confirmLargeFile(false)} variant="outline" className="w-full text-indigo-600 border-indigo-200 bg-indigo-50">
+                                Generate Waveform (May be slow)
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* 1. Header & Toolbar */}
             <header className="flex-shrink-0 bg-white border-b border-slate-200 z-30 px-4 md:px-6 py-4 flex items-center justify-between shadow-sm relative">
                 <div className="flex items-center gap-3">
@@ -772,7 +883,14 @@ export default function AudioAnnotationApp() {
                     {/* Sticky Waveform Player */}
                     <div className="flex-shrink-0 bg-white border-b border-indigo-100 shadow-sm z-20 sticky top-0">
                         <div className="relative group h-24 md:h-32 bg-slate-900">
-                            <div id="waveform" ref={waveformRef} className="w-full h-full opacity-90" />
+                            {disableWaveform ? (
+                                <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                                    <Activity className="w-5 h-5 mr-2 animate-pulse" />
+                                    Performance Mode Active (Waveform Disabled)
+                                </div>
+                            ) : (
+                                <div id="waveform" ref={waveformRef} className="w-full h-full opacity-90" />
+                            )}
 
                             {/* Controls Overlay */}
                             <div className="absolute bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 md:gap-4 bg-slate-900/80 backdrop-blur-md px-4 md:px-6 py-1.5 md:py-2 rounded-full border border-white/10 shadow-2xl transition-all">
